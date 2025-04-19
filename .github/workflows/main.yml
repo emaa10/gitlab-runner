@@ -16,26 +16,36 @@ jobs:
     steps:
     - name: Start GitLab Runner
       run: |
-        # Alten Container entfernen
+        # Alten Container und Volume entfernen
         docker rm -f gitlab-runner || true
+        docker volume rm gitlab-runner-config || true
 
-        # Neuen Container im Vordergrund mit persistentem Config-Volume starten
-        docker run --name gitlab-runner \
+        # Neues Volume erstellen
+        docker volume create gitlab-runner-config
+
+        # Registrierung in temp. Container
+        docker run --rm \
+          -v gitlab-runner-config:/etc/gitlab-runner \
           -e GITLAB_CI_URL="https://gitlab.com" \
           -e REGISTRATION_TOKEN=${{ secrets.GITLAB_RUNNER_TOKEN }} \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v gitlab-runner-config:/etc/gitlab-runner \
           gitlab/gitlab-runner:latest \
-          /bin/sh -c "
-            gitlab-runner register --non-interactive \
-              --url \$GITLAB_CI_URL \
-              --registration-token \$REGISTRATION_TOKEN \
-              --executor docker \
-              --docker-image docker:latest \
-              --description 'GitHub-Hosted Runner' \
-              --tag-list github-actions \
-              --run-untagged \
-              --locked=false
-              
-            gitlab-runner run --user=gitlab-runner --working-directory=/home/gitlab-runner
-          "
+          gitlab-runner register \
+          --non-interactive \
+          --url "$GITLAB_CI_URL" \
+          --registration-token "$REGISTRATION_TOKEN" \
+          --executor docker \
+          --docker-image docker:latest \
+          --description "GitHub-Hosted Runner" \
+          --tag-list github-actions \
+          --run-untagged \
+          --locked=false
+
+        # Haupt-Container starten
+        docker run -d --name gitlab-runner \
+          -v gitlab-runner-config:/etc/gitlab-runner \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          gitlab/gitlab-runner:latest \
+          gitlab-runner run
+
+        # Wartezeit für 2h bis zum nächsten Lauf
+        sleep 7200
