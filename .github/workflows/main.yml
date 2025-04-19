@@ -14,20 +14,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Start base container
+    - name: Start container with healthcheck
       run: |
         docker rm -f gitlab-runner || true
         docker volume create runner-config || true
+        
+        # Start container with healthcheck
         docker run -d --name gitlab-runner \
+          --health-cmd "stat /etc/gitlab-runner/config.toml" \
+          --health-interval 2s \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v runner-config:/etc/gitlab-runner \
           gitlab/gitlab-runner:latest \
-          sleep infinity
+          tail -f /dev/null
 
-    - name: Verify container health
-      run: |
-        docker ps --filter "name=gitlab-runner" --format "{{.Status}}"
-        docker exec gitlab-runner echo "Container is ready"
+        # Wait for container to become healthy
+        timeout 60 bash -c 'while [[ $(docker inspect -f "{{.State.Health.Status}}" gitlab-runner) != "healthy" ]]; do sleep 2; done'
 
     - name: Register runner
       run: |
@@ -38,7 +40,7 @@ jobs:
           --registration-token ${{ secrets.GITLAB_RUNNER_TOKEN }} \
           --executor docker \
           --docker-image docker:latest \
-          --description 'GitHub-Hosted Runner' \
+          --description 'GitHub Runner' \
           --tag-list github-actions \
           --run-untagged \
           --locked=false"
