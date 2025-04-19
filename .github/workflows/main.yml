@@ -1,0 +1,40 @@
+name: Host GitLab Runner
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # Läuft alle 2 Stunden
+  workflow_dispatch:       # Manueller Trigger optional
+
+concurrency:
+  group: gitlab-runner
+  cancel-in-progress: true # Verhindert parallele Ausführung
+
+jobs:
+  host-runner:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Start GitLab Runner
+      run: |
+        # Stoppe vorherigen Runner falls vorhanden
+        docker rm -f gitlab-runner || true
+
+        # Starte neuen Runner mit Registrierung
+        docker run -d --name gitlab-runner \
+          -e GITLAB_CI_URL="https://gitlab.com" \
+          -e REGISTRATION_TOKEN=${{ secrets.GITLAB_RUNNER_TOKEN }} \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          gitlab/gitlab-runner:latest \
+          /bin/sh -c "gitlab-runner register --non-interactive \
+            --url \$GITLAB_CI_URL \
+            --registration-token \$REGISTRATION_TOKEN \
+            --executor docker \
+            --docker-image docker:latest \
+            --description 'GitHub Actions Runner' \
+            --tag-list github-actions \
+            --run-untagged \
+            --locked=false && \
+          gitlab-runner run"
+
+        # Warte 2 Stunden bis zum nächsten Neustart
+        sleep 7200
