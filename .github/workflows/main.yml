@@ -14,24 +14,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Setup Docker container
+    - name: Start base container
       run: |
-        # Cleanup previous containers
         docker rm -f gitlab-runner || true
         docker volume create runner-config || true
-
-        # Start base container in detached mode
         docker run -d --name gitlab-runner \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v runner-config:/etc/gitlab-runner \
           gitlab/gitlab-runner:latest \
           sleep infinity
 
-    - name: Register Runner
+    - name: Verify container health
       run: |
-        # Execute registration command
+        docker ps --filter "name=gitlab-runner" --format "{{.Status}}"
+        docker exec gitlab-runner echo "Container is ready"
+
+    - name: Register runner
+      run: |
         docker exec gitlab-runner sh -c "\
-          gitlab-runner register \
+          /usr/bin/gitlab-runner register \
           --non-interactive \
           --url 'https://gitlab.com' \
           --registration-token ${{ secrets.GITLAB_RUNNER_TOKEN }} \
@@ -42,9 +43,7 @@ jobs:
           --run-untagged \
           --locked=false"
 
-    - name: Start Runner Service
+    - name: Start runner service
       run: |
-        # Start the runner in foreground
-        docker exec -d gitlab-runner gitlab-runner run
-        # Keep container alive for 2 hours
+        docker exec -d gitlab-runner /usr/bin/gitlab-runner run
         sleep 7200
