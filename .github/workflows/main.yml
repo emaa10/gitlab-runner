@@ -25,12 +25,12 @@ jobs:
           --health-interval 2s \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v runner-config:/etc/gitlab-runner \
-          gitlab/gitlab-runner:latest \
-          tail -f /dev/null
+          gitlab/gitlab-runner:latest
 
-        # Wait for container to become healthy
-        timeout 60 bash -c 'while [[ $(docker inspect -f "{{.State.Health.Status}}" gitlab-runner) != "healthy" ]]; do sleep 2; done'
-
+    - name: docker ps
+      run: |
+        docker ps
+          
     - name: Register runner
       run: |
         docker exec gitlab-runner sh -c "\
