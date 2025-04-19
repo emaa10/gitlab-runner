@@ -14,38 +14,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Start GitLab Runner
+    - name: Setup Docker container
       run: |
-        # Alten Container und Volume entfernen
+        # Cleanup previous containers
         docker rm -f gitlab-runner || true
-        docker volume rm gitlab-runner-config || true
+        docker volume create runner-config || true
 
-        # Neues Volume erstellen
-        docker volume create gitlab-runner-config
-
-        # Registrierung in temp. Container
-        docker run --rm \
-          -v gitlab-runner-config:/etc/gitlab-runner \
-          -e GITLAB_CI_URL="https://gitlab.com" \
-          -e REGISTRATION_TOKEN=${{ secrets.GITLAB_RUNNER_TOKEN }} \
+        # Start base container in detached mode
+        docker run -d --name gitlab-runner \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v runner-config:/etc/gitlab-runner \
           gitlab/gitlab-runner:latest \
+          sleep infinity
+
+    - name: Register Runner
+      run: |
+        # Execute registration command
+        docker exec gitlab-runner sh -c "\
           gitlab-runner register \
           --non-interactive \
-          --url "$GITLAB_CI_URL" \
-          --registration-token "$REGISTRATION_TOKEN" \
+          --url 'https://gitlab.com' \
+          --registration-token ${{ secrets.GITLAB_RUNNER_TOKEN }} \
           --executor docker \
           --docker-image docker:latest \
-          --description "GitHub-Hosted Runner" \
+          --description 'GitHub-Hosted Runner' \
           --tag-list github-actions \
           --run-untagged \
-          --locked=false
+          --locked=false"
 
-        # Haupt-Container starten
-        docker run -d --name gitlab-runner \
-          -v gitlab-runner-config:/etc/gitlab-runner \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          gitlab/gitlab-runner:latest \
-          gitlab-runner run
-
-        # Wartezeit für 2h bis zum nächsten Lauf
+    - name: Start Runner Service
+      run: |
+        # Start the runner in foreground
+        docker exec -d gitlab-runner gitlab-runner run
+        # Keep container alive for 2 hours
         sleep 7200
